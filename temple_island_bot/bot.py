@@ -8,6 +8,8 @@ from web3 import Web3
 import boto3
 import requests
 import hashlib
+import blockies
+import io
 
 from urllib.parse import urlparse
 from datetime import datetime as dt
@@ -49,6 +51,8 @@ def button(update: Update, context: CallbackContext):
 
     if command == Commands.add_new_wallet.value:
         commands.add_wallet(update, context)
+    elif command == Commands.upload_image_for_wallet.value:
+        commands.upload_image_for_wallet(update, context)
 
 
 def inline(update: Update, context: CallbackContext):
@@ -80,6 +84,12 @@ def on_message(update: Update, context: CallbackContext):
         chat_id=update.message.chat_id
     )
 
+    s3 = boto3.client(
+        's3',
+        aws_access_key_id=aws_access_key_id,
+        aws_secret_access_key=aws_secret_access_key,
+    )
+
     if user.pending_state is not None:
         command, *payload = user.pending_state.split(':')
 
@@ -103,6 +113,22 @@ def on_message(update: Update, context: CallbackContext):
                         user=user,
                         address=wallet_address
                     )
+
+                    bytes = blockies.create(wallet_address, scale=128)
+
+                    ext = '.jpg'
+
+                    new_filename = hashlib.md5(f'{wallet_address}{str(dt.now())}'.encode()).hexdigest()
+
+                    file = io.BytesIO(bytes)
+
+                    s3.upload_fileobj(file, aws_bucket_name, f'{new_filename}{ext}')
+
+                    uploaded_file_url = f'https://{aws_bucket_name}.s3.{aws_bucket_region}.amazonaws.com/{new_filename}{ext}'
+
+                    wallet.image_url = uploaded_file_url
+                    wallet.save()
+
                     context.bot.send_message(
                         chat_id=update.message.chat_id,
                         text=f'✅ Address: <strong>{wallet_address}</strong> is saved',
@@ -134,19 +160,22 @@ def on_message(update: Update, context: CallbackContext):
 
             wallet.save()
 
-            user.pending_state = f'ADD_WALLET_IMAGE:{wallet_id}'
-
             user.save()
+
+            keyboard = InlineKeyboardMarkup([
+                [
+                    InlineKeyboardButton(
+                        'Upload image for wallet',
+                        callback_data=f'{Commands.upload_image_for_wallet.value}:{wallet_id}'
+                    )
+                ]
+            ])
 
             context.bot.send_message(
                 chat_id=update.message.chat_id,
                 text=f'✅ Name: <strong>{wallet.name}</strong> is saved',
                 parse_mode=ParseMode.HTML,
-            )
-
-            context.bot.send_message(
-                chat_id=update.message.chat_id,
-                text=f'Please send photo for wallet...',
+                reply_markup=keyboard
             )
 
 
