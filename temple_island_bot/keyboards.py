@@ -8,7 +8,7 @@ def get_start_keyboard(showMyWalletsBtn: bool):
         [
             InlineKeyboardButton(
                 '🔍 Search on Temple',
-                callback_data=f'1'
+                switch_inline_query_current_chat=f''
             )
         ],
         [
@@ -23,7 +23,7 @@ def get_start_keyboard(showMyWalletsBtn: bool):
         keyboard.append([
             InlineKeyboardButton(
                 '👛 My wallets',
-                switch_inline_query_current_chat=''
+                switch_inline_query_current_chat='my_wallets',
             )
         ])
 

@@ -2,7 +2,7 @@ import web3
 from telegram import Update, InlineKeyboardMarkup, InlineKeyboardButton, ParseMode, InlineQueryResultArticle, \
     InputTextMessageContent
 from telegram.ext import CallbackContext, CommandHandler, Updater, CallbackQueryHandler, MessageHandler, Filters, \
-    InlineQueryHandler
+    InlineQueryHandler, ChosenInlineResultHandler
 
 from web3 import Web3
 import boto3
@@ -31,14 +31,11 @@ aws_access_key_id = configs['AWS_ACCESS_KEY_ID']
 aws_secret_access_key = configs['AWS_SECRET_ACCESS_KEY']
 aws_bucket_name = configs['AWS_BUCKET_NAME']
 aws_bucket_region = configs['AWS_BUCKET_REGION']
+API_DATA_SCRAPPER_URL = configs['API_DATA_SCRAPPER_URL']
 
 
 def start(update: Update, context: CallbackContext):
     commands.start(update, context)
-
-
-def my_wallet(update: Update, context: CallbackContext):
-    commands.my_wallet(update, context)
 
 
 def button(update: Update, context: CallbackContext):
@@ -62,22 +59,56 @@ def inline(update: Update, context: CallbackContext):
         chat_id=update.inline_query.from_user.id
     )
 
-    wallets = UserWallet.objects.filter(user=user).all()
+    if query == '':
+        return
+    elif query == 'my_wallets':
+        wallets = UserWallet.objects.filter(user=user).all()
 
-    wallet_inline = []
+        wallet_inline = []
 
-    for wallet in wallets:
-        wallet_inline.append(InlineQueryResultArticle(
-            id=wallet.id,
-            title=wallet.name,
-            description=wallet.address,
-            thumb_url=wallet.image_url,
-            # thumb_width=300,
-            # thumb_height=300,
-            input_message_content=InputTextMessageContent(f'{wallet.name}')))
+        for wallet in wallets:
+            wallet_inline.append(InlineQueryResultArticle(
+                id=wallet.id,
+                title=wallet.name,
+                description=wallet.address,
+                thumb_url=wallet.image_url,
+                input_message_content=InputTextMessageContent(f'{wallet.name}')))
 
-    update.inline_query.answer(wallet_inline, cache_time=0)
+        update.inline_query.answer(wallet_inline, cache_time=0)
+    else:
+        # url = f'https://dev.datascraper-api.universe.xyz/v1/collections/search/collections?search={query}'
 
+        print(0)
+        url = f'{API_DATA_SCRAPPER_URL}collections/search/collections?search={query}'
+
+
+        print(1, url)
+        response = requests.get(url)
+        print(2)
+
+        collection_data = response.json()
+
+        collection_inline = []
+
+        # for coll in collection_data:
+        for i, coll in enumerate(collection_data):
+            if i > 30:
+                break
+            id = coll['_id']
+            address = coll['contractAddress']
+            name = coll['name']
+            collection_inline.append(InlineQueryResultArticle(
+                id=id,
+                title=name,
+                description=address,
+                thumb_url=f'https://via.placeholder.com/150/771796',
+                input_message_content=InputTextMessageContent(f'{name}')))
+
+        print(3)
+
+        update.inline_query.answer(collection_inline, cache_time=0)
+
+        print(4)
 
 def on_message(update: Update, context: CallbackContext):
     user = User.objects.get(
@@ -230,16 +261,30 @@ def on_photo(update: Update, context: CallbackContext):
         )
 
 
+def selected_wallet(update: Update, context: CallbackContext):
+    wallet = UserWallet.objects.get(
+        name=update.message.text
+    )
+
+    context.bot.send_photo(
+        chat_id=update.message.chat_id,
+        photo=wallet.image_url,
+        caption=f'*Name:* {wallet.name}\n'
+                f'`{wallet.address}`',
+        parse_mode=ParseMode.MARKDOWN_V2,
+    )
+
+
 def main():
     start_handler = CommandHandler('start', start)
-    my_wallet_handler = CommandHandler('my_wallet', my_wallet)
     inline_handler = InlineQueryHandler(inline)
     button_handler = CallbackQueryHandler(button)
+    selected_wallet_handler = MessageHandler(Filters.via_bot(bot_id=bot.bot.id), selected_wallet)
     message_handler = MessageHandler(Filters.text & ~Filters.command & ~Filters.reply, on_message)
     photo_handler = MessageHandler(Filters.photo, on_photo)
 
+    bot.dispatcher.add_handler(selected_wallet_handler)
     bot.dispatcher.add_handler(start_handler)
-    bot.dispatcher.add_handler(my_wallet_handler)
     bot.dispatcher.add_handler(inline_handler)
     bot.dispatcher.add_handler(button_handler)
     bot.dispatcher.add_handler(message_handler)
